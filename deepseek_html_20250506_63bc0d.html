@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Simulador de Redes Interactivo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: white;
+            transition: background-color 0.5s ease;
+        }
+        #workspace {
+            width: 1000px;
+            height: 600px;
+            border: 3px solid #333;
+            position: relative;
+            background: white;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        .device {
+            width: 100px;
+            height: 100px;
+            position: absolute;
+            cursor: move;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 10px;
+            transition: all 0.3s;
+            font-size: 2em;
+            background: #f8f9fa;
+            border: 2px solid #333;
+            user-select: none;
+        }
+        .selected {
+            transform: scale(1.1);
+            box-shadow: 0 0 15px #007bff;
+            z-index: 1;
+        }
+        #tools {
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 20px;
+            margin-right: 10px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            background: #007bff;
+            color: white;
+        }
+        .line {
+            stroke-width: 3px;
+            marker-end: url(#arrowhead);
+        }
+        .correct-bg { background: #d4edda !important; }
+        .wrong-bg { background: #f8d7da !important; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Simulador de Redes con Movimiento</h1>
+    
+    <div id="tools">
+        <button onclick="addDevice('router')">➕ 📡 Router</button>
+        <button onclick="addDevice('switch')">➕ 🖧 Switch</button>
+        <button onclick="addDevice('pc')">➕ 💻 Computadora</button>
+        <button onclick="addDevice('server')">➕ 🖥️ Servidor</button>
+        <button onclick="clearAll()" style="background: #dc3545;">❌ Limpiar Todo</button>
+    </div>
+    
+    <div id="workspace">
+        <svg id="connections" style="width: 100%; height: 100%;"></svg>
+    </div>
+
+    <script>
+        let selectedDevice = null;
+        let connections = [];
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let initialX = 0;
+        let initialY = 0;
+        let currentDraggedDevice = null;
+        
+        const correctConnections = [
+            { from: 'router', to: 'switch' },
+            { from: 'switch', to: 'pc' },
+            { from: 'switch', to: 'server' }
+        ];
+
+        const deviceEmojis = {
+            router: '📡',
+            switch: '🖧',
+            pc: '💻',
+            server: '🖥️'
+        };
+
+        function addDevice(type) {
+            const workspace = document.getElementById('workspace');
+            const device = document.createElement('div');
+            device.className = 'device';
+            device.dataset.type = type;
+            device.innerHTML = `${deviceEmojis[type]}<br>${type.toUpperCase()}`;
+            
+            // Posición aleatoria
+            device.style.left = `${Math.random() * 800}px`;
+            device.style.top = `${Math.random() * 400}px`;
+            
+            // Eventos de movimiento
+            device.addEventListener('mousedown', startDragging);
+            
+            // Eventos de conexión
+            device.addEventListener('click', handleDeviceClick);
+            
+            workspace.appendChild(device);
+        }
+
+        function startDragging(e) {
+            isDragging = true;
+            currentDraggedDevice = e.target.closest('.device');
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            initialX = currentDraggedDevice.offsetLeft;
+            initialY = currentDraggedDevice.offsetTop;
+            
+            document.addEventListener('mousemove', dragDevice);
+            document.addEventListener('mouseup', stopDragging);
+        }
+
+        function dragDevice(e) {
+            if (!isDragging) return;
+            
+            const deltaX = e.clientX - dragStartX;
+            const deltaY = e.clientY - dragStartY;
+            
+            currentDraggedDevice.style.left = `${initialX + deltaX}px`;
+            currentDraggedDevice.style.top = `${initialY + deltaY}px`;
+            
+            updateConnections(currentDraggedDevice);
+        }
+
+        function stopDragging() {
+            isDragging = false;
+            currentDraggedDevice = null;
+            document.removeEventListener('mousemove', dragDevice);
+            document.removeEventListener('mouseup', stopDragging);
+        }
+
+        function handleDeviceClick(e) {
+            if (isDragging) return;
+            
+            const device = e.target.closest('.device');
+            
+            if(selectedDevice === null) {
+                selectedDevice = device;
+                selectedDevice.classList.add('selected');
+            } else {
+                const secondDevice = device;
+                const isValid = validateConnection(selectedDevice.dataset.type, secondDevice.dataset.type);
+                drawConnection(selectedDevice, secondDevice, isValid);
+                updateBackground(isValid);
+                selectedDevice.classList.remove('selected');
+                selectedDevice = null;
+            }
+        }
+
+        function drawConnection(device1, device2, isValid) {
+            const svg = document.getElementById('connections');
+            const line = createConnectionLine(device1, device2, isValid);
+            svg.appendChild(line);
+            connections.push({
+                devices: [device1, device2],
+                line: line,
+                valid: isValid
+            });
+        }
+
+        function createConnectionLine(device1, device2, isValid) {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", 'line');
+            updateLinePosition(line, device1, device2);
+            line.style.stroke = isValid ? '#28a745' : '#dc3545';
+            line.classList.add('line');
+            return line;
+        }
+
+        function updateLinePosition(line, device1, device2) {
+            const rect1 = device1.getBoundingClientRect();
+            const rect2 = device2.getBoundingClientRect();
+            const workspaceRect = document.getElementById('workspace').getBoundingClientRect();
+            
+            line.setAttribute('x1', rect1.left - workspaceRect.left + rect1.width/2);
+            line.setAttribute('y1', rect1.top - workspaceRect.top + rect1.height/2);
+            line.setAttribute('x2', rect2.left - workspaceRect.left + rect2.width/2);
+            line.setAttribute('y2', rect2.top - workspaceRect.top + rect2.height/2);
+        }
+
+        function updateConnections(movedDevice) {
+            connections.forEach(conn => {
+                if (conn.devices.includes(movedDevice)) {
+                    const otherDevice = conn.devices.find(d => d !== movedDevice);
+                    updateLinePosition(conn.line, movedDevice, otherDevice);
+                }
+            });
+        }
+
+        function validateConnection(fromType, toType) {
+            return correctConnections.some(conn => 
+                conn.from === fromType && conn.to === toType
+            );
+        }
+
+        function updateBackground(isValid) {
+            document.body.classList.add(isValid ? 'correct-bg' : 'wrong-bg');
+            setTimeout(() => {
+                document.body.classList.remove('correct-bg', 'wrong-bg');
+            }, 1000);
+        }
+
+        function clearAll() {
+            // Limpiar conexiones
+            document.getElementById('connections').innerHTML = '';
+            connections = [];
+            // Limpiar dispositivos
+            const workspace = document.getElementById('workspace');
+            while(workspace.firstChild) {
+                if(workspace.lastChild.tagName !== 'SVG') {
+                    workspace.removeChild(workspace.lastChild);
+                }
+            }
+            // Resetear estilos
+            document.body.classList.remove('correct-bg', 'wrong-bg');
+            // Crear marcador SVG nuevamente
+            createArrowheadMarker();
+        }
+
+        function createArrowheadMarker() {
+            const svgNS = "http://www.w3.org/2000/svg";
+            const defs = document.createElementNS(svgNS, 'defs');
+            const marker = document.createElementNS(svgNS, 'marker');
+            marker.setAttribute('id', 'arrowhead');
+            marker.setAttribute('markerWidth', '10');
+            marker.setAttribute('markerHeight', '7');
+            marker.setAttribute('refX', '9');
+            marker.setAttribute('refY', '3.5');
+            marker.setAttribute('orient', 'auto');
+            const polygon = document.createElementNS(svgNS, 'polygon');
+            polygon.setAttribute('points', '0 0, 10 3.5, 0 7');
+            marker.appendChild(polygon);
+            defs.appendChild(marker);
+            document.getElementById('connections').appendChild(defs);
+        }
+
+        // Inicialización
+        createArrowheadMarker();
+    </script>
+</body>
+</html>
